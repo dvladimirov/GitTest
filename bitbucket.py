@@ -58,17 +58,18 @@ class BitbucketAnalyzer:
         return repos
 
     def get_repo_size(self, project_key, repo_slug):
-        """Get repository size"""
-        url = f"{self.base_url}/users/{project_key}/repos/{repo_slug}/sizes"
-        params = {'forceCalculation': 'true'}
+        """Get repository statistics including size"""
+        url = f"{self.base_url}/rest/api/1.0/projects/{project_key}/repos/{repo_slug}/statistics"
         
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            return response.json()
+            stats = response.json()
+            # The size will be approximate based on the total number of bytes in all files
+            return stats.get('totalSize', 0)
         except requests.exceptions.RequestException as e:
-            print(f"Warning: Could not get size for repo {repo_slug}: {str(e)}")
-            return None
+            print(f"Warning: Could not get statistics for repo {repo_slug}: {str(e)}")
+            return 0
 
     def analyze_repositories(self):
         """Analyze all repositories and collect statistics"""
@@ -91,8 +92,7 @@ class BitbucketAnalyzer:
                 owner = repo.get('project', {}).get('owner', {}).get('displayName', 'Unknown')
                 
                 # Get repository size
-                size_info = self.get_repo_size(project['key'], repo['slug'])
-                repo_size = size_info.get('repository', 0) if size_info else 0
+                repo_size = self.get_repo_size(project['key'], repo['slug'])
                 
                 repo_info = {
                     'name': repo['name'],
