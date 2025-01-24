@@ -64,10 +64,23 @@ class BitbucketAnalyzer:
         else:
             url = f"{self.base_url}/rest/api/1.0/projects/{owner_slug}/repos/{repo_slug}/sizes"
         
+        # Add headers to simulate interactive request
+        size_headers = {
+            **self.headers,
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-Atlassian-Token': 'no-check',
+            'Content-Type': 'application/json'
+        }
+        
         params = {'forceCalculation': 'true'}
         
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            # First request to trigger calculation
+            response = requests.post(url, headers=size_headers, params=params)
+            response.raise_for_status()
+            
+            # Second request to get the result
+            response = requests.get(url, headers=size_headers)
             response.raise_for_status()
             size_info = response.json()
             return size_info.get('repository', 0)  # 'repository' field contains the total size
@@ -167,11 +180,11 @@ def main():
     try:
         analyzer = BitbucketAnalyzer()
         
-        # Example for analyzing a fork (user repository)
-        owner_slug = "randomuser"  # Replace with actual username
-        repo_slug = "reposlug"     # Replace with actual repo slug
+        # Example for analyzing a project repository
+        project_key = "PROJECT"  # Replace with actual project key
+        repo_slug = "repository"  # Replace with actual repo slug
         
-        stats = analyzer.analyze_single_repository(owner_slug, repo_slug, is_user_repo=True)
+        stats = analyzer.analyze_single_repository(project_key, repo_slug, is_user_repo=False)
         
         # Print results
         print("\n=== Repository Analysis Results ===")
