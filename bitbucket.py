@@ -4,10 +4,10 @@ import json
 from collections import defaultdict
 
 class BitbucketAnalyzer:
-    def __init__(self, base_url, token):
-        self.base_url = base_url.rstrip('/')
+    def __init__(self):
+        self.base_url = "https://your.stash.instance.com"  # Replace with your actual Bitbucket URL
         self.headers = {
-            'Authorization': f'Bearer {token}',
+            'Authorization': 'Bearer your_token_here',  # Replace with your actual token
             'Accept': 'application/json'
         }
         
@@ -57,9 +57,12 @@ class BitbucketAnalyzer:
             
         return repos
 
-    def get_repo_size(self, project_key, repo_slug):
+    def get_repo_size(self, owner_slug, repo_slug, is_user_repo=True):
         """Get repository statistics including size"""
-        url = f"{self.base_url}/rest/api/1.0/projects/{project_key}/repos/{repo_slug}"
+        if is_user_repo:
+            url = f"{self.base_url}/rest/api/1.0/users/{owner_slug}/repos/{repo_slug}"
+        else:
+            url = f"{self.base_url}/rest/api/1.0/projects/{owner_slug}/repos/{repo_slug}"
         
         try:
             # First get basic repo info which includes size
@@ -116,36 +119,29 @@ class BitbucketAnalyzer:
                 
         return stats
 
-    def analyze_single_repository(self, project_key, repo_slug):
+    def analyze_single_repository(self, owner_slug, repo_slug, is_user_repo=True):
         """Analyze a single repository and collect statistics"""
         stats = {}
         
-        # Get basic repository info
-        url = f"{self.base_url}/rest/api/1.0/projects/{project_key}/repos/{repo_slug}"
+        # Construct URL based on whether it's a user repo (fork) or project repo
+        if is_user_repo:
+            url = f"{self.base_url}/rest/api/1.0/users/{owner_slug}/repos/{repo_slug}"
+        else:
+            url = f"{self.base_url}/rest/api/1.0/projects/{owner_slug}/repos/{repo_slug}"
+        
         response = requests.get(url, headers=self.headers)
         response.raise_for_status()
         repo_info = response.json()
         
-        # Check if repository is a fork
-        if repo_info.get('origin'):
-            print("This is a fork. Getting fork information...")
-            fork_url = f"{self.base_url}/rest/api/1.0/users/{repo_info['origin']['project']['owner']['slug']}/repos/{repo_info['origin']['slug']}"
-            fork_response = requests.get(fork_url, headers=self.headers)
-            if fork_response.ok:
-                fork_info = fork_response.json()
-                repo_info.update(fork_info)
-        
         # Get repository statistics
-        repo_size = self.get_repo_size(project_key, repo_slug)
+        repo_size = self.get_repo_size(owner_slug, repo_slug, is_user_repo)
         
         stats = {
             'name': repo_info['name'],
-            'project_key': project_key,
             'slug': repo_slug,
             'size_bytes': repo_size,
-            'created_date': repo_info.get('createdDate'),  # Changed from created_date to createdDate
-            'owner': repo_info.get('project', {}).get('owner', {}).get('displayName') or 
-                    repo_info.get('owner', {}).get('displayName', 'Unknown'),
+            'created_date': repo_info.get('createdDate'),
+            'owner': repo_info.get('owner', {}).get('displayName', 'Unknown'),
             'is_fork': bool(repo_info.get('origin')),
             'fork_of': repo_info.get('origin', {}).get('name') if repo_info.get('origin') else None
         }
@@ -153,15 +149,14 @@ class BitbucketAnalyzer:
         return stats
 
 def main():
-    # Configuration
-    base_url = input("Enter Bitbucket base URL (e.g., https://bitbucket.company.com): ")
-    token = input("Enter your access token: ")
-    project_key = input("Enter project key: ")
-    repo_slug = input("Enter repository slug: ")
-    
     try:
-        analyzer = BitbucketAnalyzer(base_url, token)
-        stats = analyzer.analyze_single_repository(project_key, repo_slug)
+        analyzer = BitbucketAnalyzer()
+        
+        # Example for analyzing a fork (user repository)
+        owner_slug = "randomuser"  # Replace with actual username
+        repo_slug = "reposlug"     # Replace with actual repo slug
+        
+        stats = analyzer.analyze_single_repository(owner_slug, repo_slug, is_user_repo=True)
         
         # Print results
         print("\n=== Repository Analysis Results ===")
@@ -169,6 +164,8 @@ def main():
         print(f"Owner: {stats['owner']}")
         print(f"Size: {stats['size_bytes'] / (1024*1024):.2f} MB")
         print(f"Created: {stats['created_date']}")
+        if stats['is_fork']:
+            print(f"Forked from: {stats['fork_of']}")
         
         # Save results to file
         with open('bitbucket_analysis_results.json', 'w') as f:
