@@ -106,27 +106,47 @@ class BitbucketAnalyzer:
                 
         return stats
 
+    def analyze_single_repository(self, project_key, repo_slug):
+        """Analyze a single repository and collect statistics"""
+        stats = {}
+        
+        # Get basic repository info
+        url = f"{self.base_url}/rest/api/1.0/projects/{project_key}/repos/{repo_slug}"
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        repo_info = response.json()
+        
+        # Get repository statistics
+        repo_size = self.get_repo_size(project_key, repo_slug)
+        
+        stats = {
+            'name': repo_info['name'],
+            'project_key': project_key,
+            'slug': repo_slug,
+            'size_bytes': repo_size,
+            'created_date': repo_info['created_date'],
+            'owner': repo_info.get('project', {}).get('owner', {}).get('displayName', 'Unknown')
+        }
+        
+        return stats
+
 def main():
     # Configuration
     base_url = input("Enter Bitbucket base URL (e.g., https://bitbucket.company.com): ")
     token = input("Enter your access token: ")
+    project_key = input("Enter project key: ")
+    repo_slug = input("Enter repository slug: ")
     
     try:
         analyzer = BitbucketAnalyzer(base_url, token)
-        stats = analyzer.analyze_repositories()
+        stats = analyzer.analyze_single_repository(project_key, repo_slug)
         
         # Print results
         print("\n=== Repository Analysis Results ===")
-        print(f"Total number of repositories: {stats['total_repos']}")
-        print(f"Total size of all repositories: {stats['total_size'] / (1024*1024*1024):.2f} GB")
-        print("\nRepositories by owner:")
-        
-        for owner, repos in stats['repos_by_owner'].items():
-            print(f"\nOwner: {owner}")
-            print(f"Number of repositories: {len(repos)}")
-            for repo in repos:
-                size_mb = repo['size_bytes'] / (1024*1024)
-                print(f"  - {repo['name']} ({repo['project_key']}/{repo['slug']}): {size_mb:.2f} MB")
+        print(f"Repository: {stats['name']}")
+        print(f"Owner: {stats['owner']}")
+        print(f"Size: {stats['size_bytes'] / (1024*1024):.2f} MB")
+        print(f"Created: {stats['created_date']}")
         
         # Save results to file
         with open('bitbucket_analysis_results.json', 'w') as f:
