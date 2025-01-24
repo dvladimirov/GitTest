@@ -59,16 +59,26 @@ class BitbucketAnalyzer:
 
     def get_repo_size(self, project_key, repo_slug):
         """Get repository statistics including size"""
-        url = f"{self.base_url}/rest/api/1.0/projects/{project_key}/repos/{repo_slug}/statistics"
+        url = f"{self.base_url}/rest/api/1.0/projects/{project_key}/repos/{repo_slug}"
         
         try:
+            # First get basic repo info which includes size
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            stats = response.json()
-            # The size will be approximate based on the total number of bytes in all files
+            repo_info = response.json()
+            
+            # Try to get size from repo info first
+            if 'size' in repo_info:
+                return repo_info['size']
+            
+            # If not available, try statistics endpoint
+            stats_url = f"{url}/statistics"
+            stats_response = requests.get(stats_url, headers=self.headers)
+            stats_response.raise_for_status()
+            stats = stats_response.json()
             return stats.get('totalSize', 0)
         except requests.exceptions.RequestException as e:
-            print(f"Warning: Could not get statistics for repo {repo_slug}: {str(e)}")
+            print(f"Warning: Could not get size for repo {repo_slug}: {str(e)}")
             return 0
 
     def analyze_repositories(self):
@@ -116,6 +126,15 @@ class BitbucketAnalyzer:
         response.raise_for_status()
         repo_info = response.json()
         
+        # Check if repository is a fork
+        if repo_info.get('origin'):
+            print("This is a fork. Getting fork information...")
+            fork_url = f"{self.base_url}/rest/api/1.0/users/{repo_info['origin']['project']['owner']['slug']}/repos/{repo_info['origin']['slug']}"
+            fork_response = requests.get(fork_url, headers=self.headers)
+            if fork_response.ok:
+                fork_info = fork_response.json()
+                repo_info.update(fork_info)
+        
         # Get repository statistics
         repo_size = self.get_repo_size(project_key, repo_slug)
         
@@ -124,8 +143,11 @@ class BitbucketAnalyzer:
             'project_key': project_key,
             'slug': repo_slug,
             'size_bytes': repo_size,
-            'created_date': repo_info['created_date'],
-            'owner': repo_info.get('project', {}).get('owner', {}).get('displayName', 'Unknown')
+            'created_date': repo_info.get('createdDate'),  # Changed from created_date to createdDate
+            'owner': repo_info.get('project', {}).get('owner', {}).get('displayName') or 
+                    repo_info.get('owner', {}).get('displayName', 'Unknown'),
+            'is_fork': bool(repo_info.get('origin')),
+            'fork_of': repo_info.get('origin', {}).get('name') if repo_info.get('origin') else None
         }
         
         return stats
