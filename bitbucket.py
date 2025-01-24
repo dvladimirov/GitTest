@@ -60,29 +60,43 @@ class BitbucketAnalyzer:
     def get_repo_size(self, owner_slug, repo_slug, is_user_repo=True):
         """Get repository statistics including size"""
         if is_user_repo:
-            url = f"{self.base_url}/rest/api/1.0/users/{owner_slug}/repos/{repo_slug}"
+            url = f"{self.base_url}/rest/api/1.0/users/{owner_slug}/repos/{repo_slug}/sizes"
         else:
-            url = f"{self.base_url}/rest/api/1.0/projects/{owner_slug}/repos/{repo_slug}"
+            url = f"{self.base_url}/rest/api/1.0/projects/{owner_slug}/repos/{repo_slug}/sizes"
+        
+        params = {'forceCalculation': 'true'}
         
         try:
-            # First get basic repo info which includes size
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, params=params)
             response.raise_for_status()
-            repo_info = response.json()
-            
-            # Try to get size from repo info first
-            if 'size' in repo_info:
-                return repo_info['size']
-            
-            # If not available, try statistics endpoint
-            stats_url = f"{url}/statistics"
-            stats_response = requests.get(stats_url, headers=self.headers)
-            stats_response.raise_for_status()
-            stats = stats_response.json()
-            return stats.get('totalSize', 0)
+            size_info = response.json()
+            return size_info.get('repository', 0)  # 'repository' field contains the total size
         except requests.exceptions.RequestException as e:
             print(f"Warning: Could not get size for repo {repo_slug}: {str(e)}")
             return 0
+
+    def get_repo_owner(self, owner_slug, repo_slug, is_user_repo=True):
+        """Get repository owner from permissions"""
+        if is_user_repo:
+            url = f"{self.base_url}/rest/api/1.0/users/{owner_slug}/repos/{repo_slug}/permissions"
+        else:
+            url = f"{self.base_url}/rest/api/1.0/projects/{owner_slug}/repos/{repo_slug}/permissions"
+        
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            permissions = response.json()
+            
+            # Look for users with admin permission
+            for permission in permissions.get('values', []):
+                if permission.get('permission') == 'REPO_ADMIN':
+                    user = permission.get('user', {})
+                    return user.get('displayName', user.get('name', 'Unknown'))
+            
+            return owner_slug  # fallback to the owner_slug if no admin found
+        except requests.exceptions.RequestException as e:
+            print(f"Warning: Could not get owner for repo {repo_slug}: {str(e)}")
+            return owner_slug
 
     def analyze_repositories(self):
         """Analyze all repositories and collect statistics"""
@@ -133,15 +147,16 @@ class BitbucketAnalyzer:
         response.raise_for_status()
         repo_info = response.json()
         
-        # Get repository statistics
+        # Get repository size and owner
         repo_size = self.get_repo_size(owner_slug, repo_slug, is_user_repo)
+        repo_owner = self.get_repo_owner(owner_slug, repo_slug, is_user_repo)
         
         stats = {
             'name': repo_info['name'],
             'slug': repo_slug,
             'size_bytes': repo_size,
             'created_date': repo_info.get('createdDate'),
-            'owner': repo_info.get('owner', {}).get('displayName', 'Unknown'),
+            'owner': repo_owner,
             'is_fork': bool(repo_info.get('origin')),
             'fork_of': repo_info.get('origin', {}).get('name') if repo_info.get('origin') else None
         }
