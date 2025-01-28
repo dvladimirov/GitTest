@@ -4,10 +4,12 @@ import json
 class BitbucketAnalyzer:
     def __init__(self):
         self.base_url = "https://your.stash.instance.com"  # Replace with your actual Bitbucket URL
-        self.token = "your_token_here"  # Replace with your actual token
+        self.username = "your_username"  # Replace with your username
+        self.password = "your_password"  # Replace with your password
         self.bitbucket = Bitbucket(
             url=self.base_url,
-            token=self.token
+            username=self.username,
+            password=self.password
         )
 
     def analyze_repository(self):
